@@ -11,7 +11,8 @@ Start with the plain-language [information architecture](docs/INFORMATION-ARCHIT
 Requires Node.js 24+ with built-in `node:sqlite` (may print an experimental warning). No package install or build is needed.
 
 ```sh
-cd opennoir-platform
+git clone https://github.com/flamexo1/opennoir.git
+cd opennoir
 npm start
 ```
 
