@@ -1,0 +1,19 @@
+services:
+  opennoir:
+    build: .
+    ports:
+      - "127.0.0.1:4180:4180"
+    environment:
+      APP_URL: ${APP_URL:-http://127.0.0.1:4180}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
+      OLLAMA_URL: ${OLLAMA_URL:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      SETUP_TOKEN: ${SETUP_TOKEN:-}
+    volumes:
+      - opennoir-data:/app/data
+    restart: unless-stopped
+    init: true
+volumes:
+  opennoir-data:

@@ -1,3 +1,6 @@
+import {createAccounts,digest} from './services/accounts.js';
+import {createOperations} from './services/operations.js';
+import {createPayments} from './services/payments.js';
 import {catalog} from './platform.js';
 import {randomUUID} from 'node:crypto';
 import http from 'node:http';
@@ -8,17 +11,41 @@ import {Store} from './store.js';
 import {DomainError} from './domain.js';
 import {mockConnector} from './adapter.js';
 const root=fileURLToPath(new URL('./public/',import.meta.url));
-export function createApp({dbPath=fileURLToPath(new URL('./data/opennoir.sqlite',import.meta.url))}={}){
- const store=new Store(dbPath);
+export function createApp({dbPath=fileURLToPath(new URL('./data/opennoir.sqlite',import.meta.url)),authRequired=true,origin=process.env.APP_URL||'http://127.0.0.1:4180',startWorker=true,operationsOptions={},paymentOptions={}}={}){
+ const store=new Store(dbPath);const accounts=authRequired?createAccounts(store,{origin,secret:process.env.BETTER_AUTH_SECRET}):null,operations=createOperations(store,operationsOptions),payments=createPayments(store,{origin,...paymentOptions});const ready=accounts?.ready||Promise.resolve();if(startWorker)ready.then(()=>operations.start());const readBody=async(req,max=32768)=>{let chunks=[],size=0;for await(let chunk of req){size+=chunk.length;if(size>max)throw new DomainError(413,'Request is too large');chunks.push(chunk)}return Buffer.concat(chunks)};const json=async req=>{if(!req.headers['content-type']?.startsWith('application/json'))throw new DomainError(415,'JSON required');try{let body=JSON.parse((await readBody(req)).toString());if(!body||typeof body!=='object'||Array.isArray(body))throw new DomainError(400,'JSON object required');return body}catch(e){if(e instanceof DomainError)throw e;throw new DomainError(400,'Invalid JSON')}};
  const server=http.createServer(async(req,res)=>{const send=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data))};try{
   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','same-origin');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
-  if(!/^((localhost|127\.0\.0\.1)(:\d+)?)$/.test(req.headers.host||''))return send(403,{error:'Local host required'});
-  const url=new URL(req.url,'http://'+req.headers.host);
+  if(!(/^((localhost|127\.0\.0\.1)(:\d+)?)$/.test(req.headers.host||'')||(authRequired&&req.headers.host===new URL(origin).host)))return send(403,{error:'Local host required'});
+  req.headers['x-opennoir-client-ip']=req.socket.remoteAddress||'local';await ready;const url=new URL(req.url,origin);if(req.method==='GET'&&url.pathname==='/healthz')return send(200,{status:'ok',version:'0.5.0'});
   if(url.pathname.startsWith('/api/')){
-   if(req.headers.origin&&req.headers.origin!==url.origin)return send(403,{error:'Cross-origin requests are not allowed'});
-   if(req.method==='GET'&&url.pathname==='/api/workspaces')return send(200,store.list());
-   if(req.method==='GET'&&url.pathname==='/api/connectors')return send(200,[mockConnector.describe()]);
-   let workspace=req.headers['x-workspace-id']||(url.pathname.startsWith('/api/attachments/')?url.searchParams.get('workspace'):null)||'northstar',scope=url.searchParams.get('customer')||null;
+   if(req.headers.origin&&req.headers.origin!==(authRequired?origin:url.origin))return send(403,{error:'Cross-origin requests are not allowed'});
+   if(req.method==='GET'&&url.pathname==='/api/session'){let current=authRequired?await accounts.session(req):null;return send(200,{required:authRequired,initialized:accounts?.initialized()||false,user:current?.user?{id:current.user.id,name:current.user.name,email:current.user.email}:null,workspaces:current?accounts.list(current.user.id):authRequired?[]:store.list()})}
+   if(authRequired&&req.method==='POST'&&url.pathname==='/api/account/register'){let body=await json(req);if(!accounts.initialized()){let local=['127.0.0.1','localhost'].includes(new URL(origin).hostname)&&['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress);if(!local&&(!process.env.SETUP_TOKEN||digest(String(body.setupToken||''))!==digest(process.env.SETUP_TOKEN)))throw new DomainError(403,'Initial setup requires local access or the installation setup token')}let response=await accounts.register(body,req);res.statusCode=response.status;for(let [k,v]of response.headers)if(k!=='set-cookie')res.setHeader(k,v);let cookies=response.headers.getSetCookie();if(cookies.length)res.setHeader('Set-Cookie',cookies);return res.end(Buffer.from(await response.arrayBuffer()))}
+   if(authRequired&&url.pathname.startsWith('/api/auth/')){if(url.pathname.includes('sign-up')||!['/api/auth/sign-in/email','/api/auth/sign-out','/api/auth/get-session','/api/auth/change-password'].includes(url.pathname))throw new DomainError(404,'Account endpoint not available');return await accounts.handler(req,res)}
+   if(req.method==='POST'&&url.pathname==='/api/payments/webhook'){let raw=await readBody(req,1000000);return send(200,payments.event(raw,req.headers['stripe-signature']))}
+   if(url.pathname.startsWith('/api/device/')){let d=operations.authenticateDevice(req);if(req.method==='POST'&&url.pathname==='/api/device/telemetry')return send(200,operations.telemetry(d,await json(req)));if(req.method==='GET'&&url.pathname==='/api/device/commands')return send(200,operations.poll(d));if(req.method==='POST'&&url.pathname==='/api/device/ack')return send(200,operations.ack(d,await json(req)));throw new DomainError(404,'Device endpoint not found')}
+   let current=authRequired?await accounts.session(req):null;if(authRequired&&!current)throw new DomainError(401,'Sign in to continue');
+   if(authRequired&&req.method==='POST'&&url.pathname==='/api/accounts/accept')return send(200,accounts.accept(current.user,(await json(req)).token));
+   if(req.method==='GET'&&url.pathname==='/api/workspaces')return send(200,authRequired?accounts.list(current.user.id):store.list());
+   let allowed=authRequired?accounts.list(current.user.id):store.list(),workspace=req.headers['x-workspace-id']||(url.pathname.startsWith('/api/attachments/')?url.searchParams.get('workspace'):null)||allowed[0]?.id||'northstar',scope=url.searchParams.get('customer')||null;
+   const ownerPaths=['/api/accounts/invites','/api/operations/install','/api/operations/devices','/api/shop/listings','/api/shop/checkout'];let owner=ownerPaths.includes(url.pathname)&&req.method==='POST'||url.pathname.endsWith('/revoke')||url.pathname.endsWith('/activate');
+   let role=authRequired?accounts.authorize(current.user,workspace,req.method!=='GET',owner):'owner';
+   if(req.method==='GET'&&url.pathname==='/api/accounts/members')return send(200,authRequired?accounts.members(workspace):[]);
+   if(req.method==='POST'&&url.pathname==='/api/accounts/invites'){if(!authRequired)throw new DomainError(409,'Accounts are disabled in this test harness');return send(201,accounts.invite(workspace,await json(req)))}
+   if(req.method==='GET'&&url.pathname==='/api/connections')return send(200,{role,operations:operations.status(),payments:payments.status(),devices:operations.devices(workspace),commands:operations.commands(workspace),jobs:operations.jobs(workspace),orders:payments.orders(workspace),ledger:payments.ledger(workspace)});
+   if(req.method==='POST'&&url.pathname==='/api/connections/test-ai')return send(200,await operations.testAI());
+   if(req.method==='POST'&&url.pathname==='/api/operations/install')return send(201,operations.install(workspace,(await json(req)).type));
+   if(req.method==='GET'&&url.pathname==='/api/operations/jobs')return send(200,operations.jobs(workspace));
+   if(req.method==='POST'&&url.pathname==='/api/operations/jobs')return send(201,operations.enqueue(workspace,await json(req)));
+   if(req.method==='POST'&&/^\/api\/operations\/jobs\/[^/]+$/.test(url.pathname))return send(200,operations.transition(workspace,url.pathname.split('/').at(-1),(await json(req)).action));
+   if(req.method==='POST'&&url.pathname==='/api/operations/devices')return send(201,operations.enroll(workspace,await json(req)));
+   if(req.method==='POST'&&/^\/api\/operations\/devices\/[^/]+\/diagnostics$/.test(url.pathname))return send(201,operations.deviceCommand(workspace,url.pathname.split('/').at(-2),'diagnostics'));
+   if(req.method==='POST'&&/^\/api\/operations\/devices\/[^/]+\/revoke$/.test(url.pathname))return send(200,operations.revoke(workspace,url.pathname.split('/').at(-2)));
+   if(req.method==='GET'&&url.pathname==='/api/shop/listings')return send(200,payments.listings());
+   if(req.method==='POST'&&url.pathname==='/api/shop/listings')return send(201,payments.listing(workspace,await json(req)));
+   if(req.method==='POST'&&url.pathname==='/api/shop/checkout')return send(201,await payments.checkout(workspace,await json(req)));
+   if(req.method==='POST'&&/^\/api\/shop\/orders\/[^/]+\/activate$/.test(url.pathname))return send(200,payments.activate(workspace,url.pathname.split('/').at(-2)));
+   if(req.method==='GET'&&url.pathname==='/api/connectors')return send(200,[mockConnector.describe(),operations.status()]);
    if(req.method==='GET'&&url.pathname==='/api/catalog')return send(200,catalog);
    if(req.method==='GET'&&url.pathname.startsWith('/api/directory/')){let id=url.pathname.split('/').at(-1).toUpperCase();let entry=store.lookup(id);if(!entry)return send(404,{error:'No local demo profile found for this opennoir ID'});return send(200,entry)}
    if(req.method==='POST'&&url.pathname==='/api/attachments'){
@@ -26,19 +53,19 @@ export function createApp({dbPath=fileURLToPath(new URL('./data/opennoir.sqlite'
    }
    if(req.method==='GET'&&url.pathname.startsWith('/api/attachments/')){let item=store.attachment(workspace,url.pathname.split('/').at(-1));if(!item)return send(404,{error:'Screenshot not found in this workspace'});res.writeHead(200,{'Content-Type':item.mime,'Cache-Control':'no-store','Content-Disposition':'inline'});return res.end(Buffer.from(item.content))}
    if(req.method==='GET'&&url.pathname==='/api/feedback')return send(200,{comments:store.read(workspace).feedback||[]});
-   if(req.method==='GET'&&url.pathname==='/api/state')return send(200,store.read(workspace,scope));
+   if(req.method==='GET'&&url.pathname==='/api/state'){let data=store.read(workspace,scope);if(authRequired)data.permissions={role};return send(200,data)};
    if(req.method==='POST'&&url.pathname==='/api/commands'){
     if(!req.headers['content-type']?.startsWith('application/json'))return send(415,{error:'JSON required'});
     let parts=[],length=0;for await(const chunk of req){length+=chunk.length;if(length>32768)return send(413,{error:'Request too large'});parts.push(chunk)}
     let body;try{body=JSON.parse(Buffer.concat(parts).toString())}catch{return send(400,{error:'Invalid JSON'})}
     if(!body||typeof body!=='object'||Array.isArray(body))return send(400,{error:'Command object required'});
-    return send(200,{result:store.execute(workspace,body,scope,body.revision)});
+    if(authRequired&&role!=='owner'&&['settings.update','finance.settings','appearance.update','marketplace.purchase','purchase.add','resource.create','resource.pair','payout.request'].includes(body.action))throw new DomainError(403,'Only the owner can change workspace setup, resources, or purchases');return send(200,{result:store.execute(workspace,body,scope,body.revision)});
    }return send(404,{error:'API route not found'});
   }
   if(req.method!=='GET'&&req.method!=='HEAD')return send(405,{error:'Method not allowed'});
   let path;try{path=decodeURIComponent(url.pathname)}catch{return send(400,{error:'Invalid path'})}let file=resolve(root,'.'+(path==='/'?'/index.html':path));if(!file.startsWith(root))return send(404,{error:'Not found'});
-  let content;try{content=await readFile(file)}catch{return send(404,{error:'Not found'})}let type={'.html':'text/html; charset=utf-8','.js':'text/javascript','.css':'text/css','.jpg':'image/jpeg','.png':'image/png','.svg':'image/svg+xml'}[extname(file)]||'application/octet-stream';res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-cache'});res.end(req.method==='HEAD'?undefined:content);
+  let content;try{content=await readFile(file)}catch{return send(404,{error:'Not found'})}let type={'.html':'text/html; charset=utf-8','.js':'text/javascript','.css':'text/css','.jpg':'image/jpeg','.png':'image/png','.svg':'image/svg+xml','.woff2':'font/woff2'}[extname(file)]||'application/octet-stream';res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-cache'});res.end(req.method==='HEAD'?undefined:content);
  }catch(e){send(e instanceof DomainError?e.status:500,{error:e instanceof DomainError?e.message:'Internal server error'});if(!(e instanceof DomainError))console.error(e)}});
- server.on('close',()=>store.close());return {server,store};
+ server.on('close',()=>{operations.close().then(()=>store.close())});return {server,store,accounts,operations,payments,ready};
 }
-if(process.argv[1]===fileURLToPath(import.meta.url)){let port=Number(process.env.PORT||4180);let {server}=createApp({dbPath:process.env.DATA_PATH||undefined});server.listen(port,'127.0.0.1',()=>console.log(`opennoir ready: http://127.0.0.1:${port}`));for(let signal of ['SIGINT','SIGTERM'])process.on(signal,()=>server.close(()=>process.exit(0)))}
+if(process.argv[1]===fileURLToPath(import.meta.url)){process.umask(0o077);let port=Number(process.env.PORT||4180);let {server}=createApp({dbPath:process.env.DATA_PATH||undefined,origin:process.env.APP_URL||'http://127.0.0.1:'+port});server.listen(port,process.env.HOST||'127.0.0.1',()=>console.log(`opennoir ready: http://127.0.0.1:${port}`));for(let signal of ['SIGINT','SIGTERM'])process.on(signal,()=>server.close(()=>process.exit(0)))}
