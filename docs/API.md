@@ -75,3 +75,29 @@ Custom gradients additionally use `mode: "gradient"`, `colors` (three six-digit 
 - `assistant.message` appends user/scripted-response pairs locally (latest 100 messages); it performs no model inference.
 
 Public IDs identify local records; order references identify demo orders. Neither is an authentication credential or payment authorization. Public account sign-in, cross-installation lookup and global ID resolution are not implemented.
+
+## v0.5 authenticated services
+
+All workspace routes below require a signed-in account and workspace membership. Viewers can only read. Owners manage setup; operators can run tasks and diagnostics. `X-Workspace-Id` selects a permitted workspace; it does not grant access.
+
+- `GET /api/session`: first-run state and current account; no credential or private workspace data is returned before sign-in.
+- `POST /api/account/register`: first local administrator or an email-matched invitation. Remote bootstrap needs `SETUP_TOKEN`.
+- Better Auth routes: `POST /api/auth/sign-in/email`, `POST /api/auth/sign-out`, `GET /api/auth/get-session`, `POST /api/auth/change-password`.
+- `POST /api/accounts/invites`: owner creates a 24-hour invitation; the link is returned once, no automatic email.
+- `POST /api/accounts/accept`: existing signed-in user accepts an email-matched invitation.
+- `GET /api/accounts/members`: members of the selected workspace.
+- `GET /api/connections`: redacted configuration status plus workspace jobs, devices, diagnostic history, orders and test ledger.
+- `POST /api/connections/test-ai`: verify the administrator-configured Ollama service and model.
+- `POST /api/operations/install`: owner installs `local-document` or configured `ollama` agent.
+- `GET/POST /api/operations/jobs`: list jobs or enqueue `{resourceId,input,idempotencyKey}`.
+- `POST /api/operations/jobs/:id`: `{action:"cancel"}` or explicit `{action:"retry"}`.
+- `POST /api/operations/devices`: owner enrolls `{name,kind,simulated}` and receives the one-time token.
+- `POST /api/operations/devices/:id/diagnostics`: queue a read-only request for an online device.
+- `POST /api/operations/devices/:id/revoke`: owner revokes its token.
+- `GET /api/shop/listings`: active test service listings.
+- `POST /api/shop/listings`: owner creates `{name,description,priceCents}`; currency is USD.
+- `POST /api/shop/checkout`: owner creates a Stripe test checkout using `{listingId,idempotencyKey}`. Price is read on the server.
+- `POST /api/shop/orders/:id/activate`: owner activates a verified paid test service exactly once.
+- `POST /api/payments/webhook`: no cookie; requires a valid Stripe signature on the raw body and a test-mode event. It does not accept live payments.
+
+Device routes authenticate a separate bearer token and infer their workspace from that token. See [DEVICE-PROTOCOL.md](DEVICE-PROTOCOL.md).

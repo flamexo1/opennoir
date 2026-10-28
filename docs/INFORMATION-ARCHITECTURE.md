@@ -23,3 +23,9 @@ The console masks client/task names in work cards and activity listings and bloc
 
 ## Local demo boundaries
 SQLite persistence, comments, pairing and screenshots are real local records. Purchases, opportunities, execution, earnings, fees, payouts and work views are simulated. No real seller inventory, public sign-in, payment processing, bank integration, device control, live video or AI provider is connected. Company names in reference concepts do not indicate affiliation or official offers.
+
+## Team map and companion rail
+
+My team includes an offline schematic map with sample robot positions and an explicitly unowned robotaxi preview. Select pins for details; confidential active work has no displayed pin. No geolocation, map provider, vehicle booking or telemetry is connected. The right-side assistant starts minimized, expands on request, and shares the saved scripted conversation with the Assistant page. Core sidebar items now have visible labels, including Earnings and My team.
+
+The team explorer uses a large map on the left and a scrollable robot-results panel on the right. Results show concept photos, status, sample area, health and battery. Cards and pins share selection, and search/status filters apply to both. AI agents appear separately below or under the AI agents filter. On narrow screens the results stack below the map.

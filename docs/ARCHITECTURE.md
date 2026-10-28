@@ -48,3 +48,15 @@ Writes use `BEGIN IMMEDIATE`. Domain logic changes an in-memory document; only s
 `platform.js` owns the illustrative catalog, stable local public-ID derivation, document hydration and scripted assistant answers. SQLite now also stores `directory` and `attachments` tables. The directory holds public profile JSON, private pairing-code salts/hashes and claimed-workspace ownership. Attachments are workspace-scoped image BLOBs. Hydration adds missing IDs/collections to old documents without resetting feedback or operational history; persisted writes retain the existing document transaction/revision path. Directory claim changes and resource creation commit or roll back together.
 
 Marketplace purchases are simulated order records. Adding a purchased item creates a separate resource and marks the order added; repeats are rejected. Browser screen preview/capture is a local user-permission flow, independent of the mock execution connector. Screenshot uploads use a dedicated bounded upload route, while ticket creation validates attachment ownership through Store services.
+
+## Connected self-hosted services (v0.5)
+
+The CLI enables account protection by default. `services/accounts.js` configures Better Auth against built-in SQLite and applies its migrations before serving requests. Membership and invitation tables enforce workspace ownership independently of the selected UI scope. The compatibility constructor override is used only in isolated legacy tests.
+
+`services/operations.js` owns normalized jobs/events, device tokens/telemetry and diagnostic-command tables. A single in-process worker claims persisted jobs using a transaction and bounded lease. Jobs execute deterministic analysis or a configured Ollama request. Cancellation and expired-lease recovery preserve terminal status and history. This is a single-process/persistent-volume design, not a distributed queue.
+
+`services/payments.js` uses the official Stripe SDK and accepts test keys only. Server-owned listing prices become persisted checkout orders. Signed raw-body events verify session, amount, currency and test mode before idempotent fulfillment. Activated service resources are revoked on refund. The checkout ledger is separate from the older modeled demo economics. Third-party payouts are not implemented.
+
+`clients/device-client.js` is a separate process using the public device protocol. It demonstrates authentication, reconnect, monotonic telemetry, command polling and acknowledgement; it cannot move physical hardware. Reported coordinates are displayed separately from demo positions on a schematic projection.
+
+`public/product.js` provides account setup/sign-in, Connections, task results, the connected test storefront and access management inside the existing interface. No provider secrets are exposed to browser code. Polling updates displayed state; it does not execute jobs.
