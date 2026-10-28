@@ -1,3 +1,4 @@
+import {uiLabel} from './ui-text.js';
 /** Local design review annotations. No remote transmission, screen capture or analytics. */
 export function createFeedback({getState,getCustomer,command,notify,navigate}){
  const root=document.createElement('div');root.id='feedback-root';document.body.append(root);
