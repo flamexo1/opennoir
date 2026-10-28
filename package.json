@@ -1,1 +1,24 @@
-{"name":"opennoir","version":"0.3.0","private":true,"type":"module","description":"Local-first operations console for agent and robot service providers","engines":{"node":">=24.0.0"},"scripts":{"start":"node --env-file-if-exists=.env server.js","test":"node --test","check":"node --check server.js && node --check store.js && node --check platform.js && node --check domain.js && node --check public/app.js && node --check public/feedback.js"},"license":"MIT"}
+{
+  "name": "opennoir",
+  "version": "0.5.0",
+  "private": true,
+  "type": "module",
+  "description": "Local-first operations console for agent and robot service providers",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js",
+    "test": "node --test",
+    "check": "node --check server.js && node --check store.js && node --check platform.js && node --check domain.js && node --check public/app.js && node --check public/feedback.js && node --check public/fleet-map.js && node --check public/ui-text.js && node --check public/product.js && node --check services/accounts.js && node --check services/operations.js && node --check services/payments.js && node --check clients/device-client.js",
+    "device:simulate": "node --env-file-if-exists=device.env clients/device-client.js",
+    "backup": "node --env-file-if-exists=.env scripts/backup.js",
+    "doctor": "node --env-file-if-exists=.env scripts/doctor.js",
+    "account:reset": "node --env-file-if-exists=.env scripts/reset-password.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "better-auth": "^1.7.14",
+    "stripe": "^23.0.1"
+  }
+}

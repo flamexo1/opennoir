@@ -55,3 +55,18 @@ Final v0.2 suite: **24 tests passed**. Added annotation coverage for Marketplace
 
 ## 0.3.0 Work and earnings
 27 automated checks pass, including capability matching, occupied team members, customer boundary rejection, payout fee math, repeated withdrawal rejection, payment-method validation and read-state persistence. Browser review covered opportunity confirmation, ongoing cards, confidential preview blocking, earnings calculations and review-to-demo-checkout. Existing feedback remains visible. No live screen-sharing permission or external payment/AI/device integration was exercised.
+
+Team-map update: 29 tests pass, including confidential-pin masking and empty-team robotaxi-preview labeling. Browser verified labeled navigation, selectable robotaxi pin, minimized/expanded right assistant, saved scripted response and retained feedback count.
+
+Map-results refinement: 30 tests pass. Verified result-to-pin and pin-to-result selection in an independent browser preview. Added matching/filter and stable-position coverage.
+
+Design foundation: shared local Inter font verified loaded; reviewed Home, Marketplace, My team, Work, Earnings, People & businesses, Help & support and Settings at desktop width with no document overflow or lowercase system headings. Reviewed My team at 390×844 with no document overflow. Verified Add dialog. All 30 existing behavioral tests pass. Other OS/browser combinations have not been exercised.
+
+
+## Connected self-hosted preview v0.5.0
+
+- 38 automated tests pass. Added secure first-run/sign-in/logout, email-matched invitations, viewer write rejection, workspace isolation, document processing, idempotent task submission, cancellation, model-provider fixture/error behavior, database-reopen lease recovery, telemetry-token/replay validation, diagnostics ACK/revocation, signed Stripe event idempotency/fulfillment/refunds and amount/live-mode rejection.
+- Browser tested in an isolated database on port 4181: create an administrator, install a processor, submit text and inspect a saved successful result. A separate Node client enrolled through the UI sent telemetry over HTTP and acknowledged a diagnostic request. Account session, task output and diagnostic history survived a server restart.
+- Main workspace remained separate. Before migration a private SQLite backup was created. After migration, Northstar still had 8 resources, 10 comments and 9 open comments; Sandbox remained intact. No real administrator password was chosen for the user's installation.
+- Actual Ollama inference and Stripe-hosted checkout have not been exercised because provider/model configuration is absent. Tests use explicit provider fixtures and Stripe's signature helpers. No physical robot, live payment or seller payout is claimed.
+- Docker files are included but the local Docker daemon was unavailable, so a container build/run was not verified.
